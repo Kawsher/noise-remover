@@ -45,3 +45,7 @@ This writes `recording_clean.wav`. Useful options:
 ```bash
 .venv/bin/python tests/test_denoise.py
 ```
+
+## License
+
+[MIT](LICENSE)
