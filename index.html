@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noise Remover</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f6f4; --card:#fff; --ink:#1d1d1b; --mute:#6b6b66; --line:#deded8; --accent:#1f6f5c; --on:#fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161715; --card:#20211f; --ink:#ecece8; --mute:#a0a09a; --line:#3a3b37; --accent:#5cc2a6; --on:#10201b; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:40px 20px 64px; }
+  h1 { font-size:26px; margin:0; }
+  .sub { color:var(--mute); margin:4px 0 24px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
+  #drop { display:block; text-align:center; border:2px dashed var(--line); border-radius:10px; padding:36px 16px; cursor:pointer; background:var(--card); margin-bottom:16px; overflow-wrap:anywhere; }
+  #drop:hover, #drop.over, #drop:focus-within { border-color:var(--accent); }
+  #drop input { position:absolute; opacity:0; width:1px; height:1px; }
+  #drop small { display:block; color:var(--mute); }
+  fieldset { border:0; padding:0; margin:0 0 16px; }
+  legend, .label { font-weight:600; padding:0; margin-bottom:6px; display:block; }
+  .seg { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .seg label { border:1px solid var(--line); border-radius:8px; padding:8px; text-align:center; cursor:pointer; }
+  .seg small { display:block; color:var(--mute); font-size:13px; }
+  .seg input { position:absolute; opacity:0; }
+  .seg label:has(input:checked) { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
+  .seg label:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+  .check { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+  details { margin-bottom:16px; }
+  summary { cursor:pointer; color:var(--mute); }
+  .row { display:flex; gap:12px; margin-top:10px; flex-wrap:wrap; }
+  .row label { flex:1; min-width:120px; font-size:14px; }
+  input[type=number], select { width:100%; padding:8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; }
+  .hint { color:var(--mute); font-size:14px; margin:8px 0 0; }
+  button, a.btn { display:inline-block; border:0; border-radius:8px; padding:11px 18px; font:inherit; font-weight:600; background:var(--accent); color:var(--on); cursor:pointer; text-decoration:none; }
+  button:disabled { opacity:.5; cursor:default; }
+  #go { width:100%; }
+  #error { color:#c0392b; margin:12px 0 0; }
+  #tracks { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-bottom:12px; }
+  #tracks button { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:500; }
+  #tracks button[aria-pressed=true] { background:var(--accent); color:var(--on); border-color:var(--accent); }
+  audio { width:100%; margin-bottom:12px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Noise Remover</h1>
+  <p class="sub">Clean up hiss, fan noise and room tone. Everything stays on this computer.</p>
+
+  <label id="drop">
+    <input id="file" type="file" accept="audio/*,video/*">
+    <strong id="dropText">Choose an audio file or drop it here</strong>
+    <small>MP3, WAV, M4A, FLAC, OGG, or a video's soundtrack</small>
+  </label>
+
+  <div class="card">
+    <fieldset>
+      <legend>Strength</legend>
+      <div class="seg">
+        <label><input type="radio" name="strength" value="10,1.0">Gentle<small>Most natural</small></label>
+        <label><input type="radio" name="strength" value="18,1.3" checked>Medium<small>Good default</small></label>
+        <label><input type="radio" name="strength" value="30,1.8">Strong<small>Noisy recordings</small></label>
+      </div>
+    </fieldset>
+    <label class="check"><input id="voice" type="checkbox" checked> Cut low rumble below 70 Hz (best for voice; turn off for music)</label>
+    <details>
+      <summary>More options</summary>
+      <div class="row">
+        <label>Noise-only from (seconds)<input id="noiseStart" type="number" min="0" step="0.1"></label>
+        <label>to (seconds)<input id="noiseEnd" type="number" min="0" step="0.1"></label>
+        <label>Save as
+          <select id="format"><option value="wav">WAV (best quality)</option><option value="flac">FLAC</option><option value="mp3">MP3</option><option value="m4a">M4A</option></select>
+        </label>
+      </div>
+      <p class="hint">If part of the recording has only noise and no voice, enter it here. This helps with steady noise under music.</p>
+    </details>
+    <button id="go" disabled>Remove noise</button>
+    <p id="status" class="hint" role="status" hidden></p>
+    <p id="error" role="alert" hidden></p>
+  </div>
+
+  <div id="result" class="card" hidden>
+    <span class="label">Compare</span>
+    <div id="tracks">
+      <button data-track="original" aria-pressed="false">Original</button>
+      <button data-track="cleaned" aria-pressed="true">Cleaned</button>
+      <button data-track="removed" aria-pressed="false">Removed noise</button>
+    </div>
+    <audio id="player" controls></audio>
+    <p class="hint" style="margin:0 0 12px">If you can hear words in “Removed noise”, the setting is too strong. Try a lower strength.</p>
+    <a id="save" class="btn">Download cleaned audio</a>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let file = null, urls = {};
+
+function pick(f) {
+  if (!f) return;
+  file = f;
+  $('dropText').textContent = f.name;
+  $('go').disabled = false;
+}
+$('file').onchange = e => pick(e.target.files[0]);
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => pick(e.dataTransfer.files[0]));
+
+$('go').onclick = async () => {
+  const [reduction, sensitivity] = document.querySelector('[name=strength]:checked').value.split(',');
+  const q = new URLSearchParams({ reduction, sensitivity, format: $('format').value,
+    highpass: $('voice').checked ? 70 : 0, noise_start: $('noiseStart').value, noise_end: $('noiseEnd').value });
+  $('go').disabled = true;
+  $('error').hidden = true;
+  $('status').hidden = false;
+  $('status').textContent = 'Cleaning… long recordings can take a minute or more.';
+  try {
+    const r = await fetch('/clean?' + q, { method: 'POST', body: file, headers: { 'X-Filename': encodeURIComponent(file.name) } });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    Object.values(urls).forEach(URL.revokeObjectURL);
+    urls = {};
+    // Blobs let the player seek freely and keep position when switching tracks.
+    await Promise.all(['original', 'cleaned', 'removed', 'download'].map(async t => {
+      urls[t] = URL.createObjectURL(await (await fetch(`/audio/${data.job}/${t}`)).blob());
+    }));
+    $('save').href = urls.download;
+    $('save').download = file.name.replace(/\.[^.]+$/, '') + '_clean.' + data.format;
+    $('player').src = urls.cleaned;
+    press('cleaned');
+    $('result').hidden = false;
+    $('status').hidden = true;
+  } catch (e) {
+    $('status').hidden = true;
+    $('error').textContent = e.message || 'Something went wrong.';
+    $('error').hidden = false;
+  }
+  $('go').disabled = false;
+};
+
+function press(track) {
+  document.querySelectorAll('#tracks button').forEach(b => b.setAttribute('aria-pressed', b.dataset.track === track));
+}
+document.querySelectorAll('#tracks button').forEach(b => b.onclick = () => {
+  const p = $('player'), at = p.currentTime, playing = !p.paused;
+  p.src = urls[b.dataset.track];
+  p.onloadedmetadata = () => { p.currentTime = at; if (playing) p.play(); p.onloadedmetadata = null; };
+  press(b.dataset.track);
+});
+</script>
+</body>
+</html>
